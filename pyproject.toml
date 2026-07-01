@@ -1,0 +1,37 @@
+[project]
+name = "aegis-agent"
+version = "0.1.0"
+description = "A comprehensive, provider-agnostic agent framework, with a deep cybersecurity analyst agent (Aegis Sentinel) as its flagship use case."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "pydantic>=2.7",
+    "httpx>=0.27",
+    "tenacity>=8.2",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.50"]
+mcp = ["mcp>=1.0"]
+acp = ["agent-client-protocol>=0.10"]
+gateway = ["websockets>=13.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.6"]
+all = [
+    "aegis-agent[anthropic,openai,mcp,acp,gateway]",
+]
+
+[project.scripts]
+aegis = "aegis_core.cli:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["aegis_core", "aegis_sentinel"]

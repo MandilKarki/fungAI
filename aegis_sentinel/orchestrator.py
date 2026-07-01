@@ -18,6 +18,7 @@ from aegis_core.memory.backend import BackendProtocol
 from aegis_core.memory.state_backend import StateBackend
 from aegis_core.middleware import MiddlewarePipeline
 from aegis_core.prompts.builder import SystemPromptBuilder
+from aegis_core.prompts.skills import SkillCatalog
 from aegis_core.providers.base import Provider
 from aegis_core.subagents.delegate import DelegationLimiter, DelegationPolicy, delegate_task
 from aegis_core.tools.base import Tool
@@ -117,6 +118,7 @@ def build_orchestrator_agent(
     provider: Provider,
     memory: BackendProtocol | None = None,
     config: AgentConfig | None = None,
+    skill_catalog: SkillCatalog | None = None,
 ) -> Agent:
     memory = memory or StateBackend()
     limiter = DelegationLimiter(policy=DelegationPolicy(max_spawn_depth=1, max_concurrent_children=3))
@@ -132,4 +134,5 @@ def build_orchestrator_agent(
         prompt_builder=prompt_builder,
         middleware=middleware,
         config=config or AgentConfig(max_iterations=15),
+        skill_catalog=skill_catalog,
     )

@@ -17,6 +17,7 @@ from aegis_core.memory.backend import BackendProtocol
 from aegis_core.memory.state_backend import StateBackend
 from aegis_core.middleware import MiddlewarePipeline
 from aegis_core.prompts.builder import SystemPromptBuilder
+from aegis_core.prompts.skills import SkillCatalog
 from aegis_core.providers.base import Provider
 from aegis_sentinel.audit import AuditLogMiddleware
 from aegis_sentinel.tools.vuln import build_vuln_tools
@@ -52,6 +53,7 @@ def build_vuln_management_agent(
     provider: Provider,
     memory: BackendProtocol | None = None,
     config: AgentConfig | None = None,
+    skill_catalog: SkillCatalog | None = None,
 ) -> Agent:
     memory = memory or StateBackend()
     tools = build_vuln_tools(memory)
@@ -69,4 +71,5 @@ def build_vuln_management_agent(
         prompt_builder=prompt_builder,
         middleware=middleware,
         config=config or AgentConfig(max_iterations=20),
+        skill_catalog=skill_catalog,
     )

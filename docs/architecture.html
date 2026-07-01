@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Aegis Agent — Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #111a2e;
+    --panel-border: #1f2c47;
+    --text: #e6ecf7;
+    --muted: #93a3c2;
+    --accent: #5b8cff;
+    --core: #10b981;
+    --gated: #f59e0b;
+    --partial: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #0b1220 0%, #0d1526 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+  }
+  header {
+    padding: 48px 24px 24px;
+    text-align: center;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  header h1 {
+    margin: 0 0 8px;
+    font-size: 2.1rem;
+    background: linear-gradient(90deg, #5b8cff, #7fd6ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header p { color: var(--muted); max-width: 760px; margin: 0 auto; }
+
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin: 20px auto 0;
+    font-size: 0.85rem;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  section { margin-bottom: 56px; }
+  section h2 {
+    font-size: 1.4rem;
+    border-left: 4px solid var(--accent);
+    padding-left: 12px;
+    margin-bottom: 6px;
+  }
+  section .subtitle { color: var(--muted); margin: 0 0 20px; max-width: 900px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 24px;
+    overflow-x: auto;
+  }
+
+  .callouts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 1rem; color: var(--accent); }
+  .card p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+  code {
+    background: #0d1730;
+    border: 1px solid var(--panel-border);
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 0.85em;
+    color: #a8c4ff;
+  }
+
+  footer {
+    text-align: center;
+    padding: 32px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    border-top: 1px solid var(--panel-border);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  .mermaid { display: flex; justify-content: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Aegis Agent — Full Architecture</h1>
+  <p>A provider-agnostic agent framework (<code>aegis_core</code>) and the six-persona
+     cybersecurity analyst agent built on it (<code>aegis_sentinel</code>), plus the
+     always-on gateway (<code>aegis_gateway</code>) and protocol integrations (MCP, ACP).</p>
+  <div class="legend">
+    <span><i class="swatch" style="background:var(--core)"></i> core — implemented &amp; verified</span>
+    <span><i class="swatch" style="background:var(--gated)"></i> credential-gated — real, needs your API key/token</span>
+    <span><i class="swatch" style="background:var(--partial)"></i> partial — real subset, broader coverage on the roadmap</span>
+  </div>
+</header>
+
+<main>
+
+<section>
+  <h2>1. System-wide architecture</h2>
+  <p class="subtitle">Every surface (CLI, gateway channels) drives the same Agent loop. Every
+     aegis_sentinel persona is that same loop, just configured differently. Nothing here is a
+     separate codebase — one class, many configurations.</p>
+  <div class="panel">
+    <div class="mermaid">
+flowchart TB
+    subgraph SURF["🖥️ Surfaces"]
+        CLI["CLI\n(aegis_core.cli)"]
+        GWCLI["Gateway: CLI channel"]
+        TG["Gateway: Telegram"]:::gated
+        DC["Gateway: Discord"]:::gated
+        SL["Gateway: Slack"]:::gated
+    end
+
+    subgraph GW["aegis_gateway — WebSocket daemon"]
+        SRV["GatewayServer\n(one Agent per session_id)"]
+    end
+
+    subgraph APP["Application layer — aegis_sentinel personas"]
+        ORCH["🧭 orchestrator"]
+        SOC["🚨 soc_triage"]
+        VULN["🛡️ vuln_management"]:::gatedish
+        IR["🔎 incident_response"]
+        RT["⚔️ red_team\n(RoE-gated)"]
+        DS["🔐 data_security"]
+    end
+
+    subgraph CORE["aegis_core — the framework"]
+        LOOP["Agent Loop\n(state machine · streaming)"]
+        MW["Middleware Pipeline"]
+        PROMPT["Prompt Builder\n(tiered · cache-aware · skills)"]
+        TOOLS["Tool Registry\n(dispatch · deferred/search)"]
+        CTX["Context Engine\n(tiered / branch-tree / quarantine)"]
+        MEM["Memory Backends\n(State · Filesystem · SQLite · Composite)"]
+        SUB["Subagents\n(delegate · MoA · background · swarm · fork)"]
+        PERM["Permissions\n(approval · checkpoints)"]
+        PROV["Providers"]:::gated
+    end
+
+    subgraph PROTO["Protocol integrations"]
+        MCP["MCP client"]
+        ACP["ACP client"]
+    end
+
+    CLI --> LOOP
+    GWCLI --> SRV
+    TG --> SRV
+    DC --> SRV
+    SL --> SRV
+    SRV --> LOOP
+
+    ORCH -. delegate_task .-> SOC
+    ORCH -. delegate_task .-> VULN
+    ORCH -. delegate_task .-> IR
+    ORCH -. delegate_task .-> RT
+    ORCH -. delegate_task .-> DS
+
+    SOC --> LOOP
+    VULN --> LOOP
+    IR --> LOOP
+    RT --> LOOP
+    DS --> LOOP
+    ORCH --> LOOP
+
+    LOOP --> MW & PROMPT & TOOLS & CTX & PERM & PROV & SUB
+    TOOLS --> MEM
+    TOOLS --> MCP
+    SUB --> ACP
+    SUB --> MEM
+
+    classDef gated fill:#3a2c12,stroke:#f59e0b,color:#fde68a;
+    classDef gatedish fill:#132a20,stroke:#10b981,color:#a7f3d0,stroke-dasharray: 3 2;
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>2. Cybersecurity analyst agent — six independent personas</h2>
+  <p class="subtitle">Each persona gets its own memory backend, its own skill catalog, and its
+     own LLM provider by default — verified live (see chat). They only share data when the
+     <code>orchestrator</code> deliberately passes the same memory object into a delegated call.</p>
+  <div class="panel">
+    <div class="mermaid">
+flowchart LR
+    subgraph SOC_D["🚨 soc_triage — own everything"]
+        direction TB
+        SOC_A["Agent + own Provider"]
+        SOC_M[("own memory\n/alerts /audit")]
+        SOC_S[("own skills\n/skills/*")]
+        SOC_T["parse_alert · correlate_alerts\nclassify_severity · recommend_response\nenrich_ioc · map_attack_techniques"]
+        SOC_A --- SOC_M
+        SOC_A --- SOC_S
+        SOC_A --- SOC_T
+    end
+
+    subgraph VULN_D["🛡️ vuln_management — own everything"]
+        direction TB
+        VULN_A["Agent + own Provider"]
+        VULN_M[("own memory\n/vulns /cache")]
+        VULN_S[("own skills")]
+        VULN_T["ingest_scan_results\nassess_exploitability (live KEV+EPSS)\nprioritize_remediation"]
+        VULN_A --- VULN_M
+        VULN_A --- VULN_S
+        VULN_A --- VULN_T
+    end
+
+    subgraph IR_D["🔎 incident_response — own everything"]
+        direction TB
+        IR_A["Agent + own Provider"]
+        IR_M[("own memory\n/cases")]
+        IR_S[("own skills")]
+        IR_T["open_case · ingest_evidence\nbuild_timeline · pivot_on_ioc\ngenerate_ir_report"]
+        IR_A --- IR_M
+        IR_A --- IR_S
+        IR_A --- IR_T
+    end
+
+    subgraph RT_D["⚔️ red_team — own everything"]
+        direction TB
+        RT_A["Agent + own Provider"]
+        RT_M[("own memory\n/redteam")]
+        RT_S[("own skills")]
+        RT_T["load_rules_of_engagement\nplan_attack_path (RoE-gated)\ngenerate_engagement_report"]
+        RT_A --- RT_M
+        RT_A --- RT_S
+        RT_A --- RT_T
+    end
+
+    subgraph DS_D["🔐 data_security — own everything"]
+        direction TB
+        DS_A["Agent + own Provider"]
+        DS_M[("own memory\nany path")]
+        DS_S[("own skills")]
+        DS_T["classify_data_sensitivity\nscan_for_exposed_secrets\nreview_access_grants"]
+        DS_A --- DS_M
+        DS_A --- DS_S
+        DS_A --- DS_T
+    end
+
+    ORCH["🧭 orchestrator\n(delegate tool)"] -. "shared memory\nonly when delegating" .-> SOC_M
+    ORCH -.-> VULN_M
+    ORCH -.-> IR_M
+    ORCH -.-> RT_M
+    ORCH -.-> DS_M
+    </div>
+  </div>
+  <div class="callouts">
+    <div class="card">
+      <h3>Independent by default</h3>
+      <p>Call any <code>build_X_agent(provider=...)</code> with no <code>memory=</code> argument
+         and it gets a fresh, private <code>StateBackend()</code>. Two SOC and vuln agents built
+         this way share nothing — proven live in this session.</p>
+    </div>
+    <div class="card">
+      <h3>Sharing is opt-in</h3>
+      <p>Pass the <em>same</em> memory object to two <code>build_X_agent()</code> calls (exactly
+         what <code>orchestrator.py</code> does) and they now see each other's files — e.g. an
+         escalated SOC alert becoming visible to <code>incident_response</code>.</p>
+    </div>
+    <div class="card">
+      <h3>Own skills, own model</h3>
+      <p>Each domain builder now accepts its own <code>skill_catalog=</code> and its own
+         <code>provider=</code> — a persona can run a different LLM and a completely separate
+         skill library from every other persona.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>3. Inside the harness — the Agent loop</h2>
+  <p class="subtitle">This is what "the framework" actually runs, every turn, for every persona
+     above. An explicit state machine, not a black box.</p>
+  <div class="panel">
+    <div class="mermaid">
+flowchart TD
+    START(["turn begins"]) --> STEER["drain steering messages"]
+    STEER --> COMPRESS{"context over budget?"}
+    COMPRESS -- yes --> DOCOMPRESS["compress\n(tiered / branch-tree)"]
+    COMPRESS -- no --> SKILLS
+    DOCOMPRESS --> SKILLS["refresh skill catalog index"]
+    SKILLS --> BUDGET{"iteration budget left?"}
+    BUDGET -- "no (grace used)" --> STOP_BUDGET(["stop: budget_exhausted"])
+    BUDGET -- "yes, nearly out" --> GRACE["inject 'wrap up now' nudge"]
+    BUDGET -- yes --> CALL
+    GRACE --> CALL["call the model\n(streaming or not)"]
+    CALL --> TOOLCALLS{"tool calls requested?"}
+    TOOLCALLS -- yes --> PERMCHECK["middleware + approval policy\nper call"]
+    PERMCHECK --> DISPATCH["dispatch\n(concurrency-safe batch\nor streamed as they arrive)"]
+    DISPATCH --> STEER
+    TOOLCALLS -- no --> FOLLOWUP{"follow-up messages queued?"}
+    FOLLOWUP -- yes --> STEER
+    FOLLOWUP -- no --> DONE(["stop: completed"])
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>4. Provenance</h2>
+  <div class="callouts">
+    <div class="card"><h3>hermes-agent</h3><p>Tiered compression, budget/grace-call loop, checkpoint/approval subsystem, MoA advisors, model-family prompt guidance.</p></div>
+    <div class="card"><h3>openclaw</h3><p>Branch-tree sessions, gateway/multi-channel architecture, declarative tool-availability diagnostics, cache-boundary prompting.</p></div>
+    <div class="card"><h3>deepagents</h3><p>Virtual-filesystem memory (<code>BackendProtocol</code>), fresh-state subagent isolation, composite backend routing.</p></div>
+    <div class="card"><h3>4th repo — excluded</h3><p>Evidence of leaked proprietary code; never used as a direct source. See <code>ARCHITECTURE.md</code> §1.</p></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  Generated for the Aegis Agent project · see <code>ARCHITECTURE.md</code>,
+  <code>FEATURE_MATRIX.md</code>, and <code>ROADMAP.md</code> in the repo root for full detail.
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#111a2e',
+      primaryColor: '#16213f',
+      primaryTextColor: '#e6ecf7',
+      primaryBorderColor: '#5b8cff',
+      lineColor: '#5b8cff',
+      secondaryColor: '#132a20',
+      tertiaryColor: '#1f2c47'
+    },
+    flowchart: { curve: 'basis', htmlLabels: true }
+  });
+</script>
+
+</body>
+</html>

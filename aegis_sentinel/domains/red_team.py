@@ -23,6 +23,7 @@ from aegis_core.memory.state_backend import StateBackend
 from aegis_core.middleware import MiddlewarePipeline
 from aegis_core.permissions.approval import ApprovalPolicy, RiskLevel
 from aegis_core.prompts.builder import SystemPromptBuilder
+from aegis_core.prompts.skills import SkillCatalog
 from aegis_core.providers.base import Provider
 from aegis_sentinel.audit import AuditLogMiddleware
 from aegis_sentinel.tools.redteam import build_redteam_tools
@@ -59,6 +60,7 @@ def build_red_team_agent(
     memory: BackendProtocol | None = None,
     config: AgentConfig | None = None,
     ask_callback: Callable[[str, dict, RiskLevel], Awaitable[bool]] | None = None,
+    skill_catalog: SkillCatalog | None = None,
 ) -> Agent:
     """`ask_callback` is the human-approval hook for plan_attack_path (it's
     `requires_approval=True`) — a real deployment should wire this to an
@@ -84,4 +86,5 @@ def build_red_team_agent(
         permission_policy=permission_policy,
         ask_callback=ask_callback,
         config=config or AgentConfig(max_iterations=20),
+        skill_catalog=skill_catalog,
     )

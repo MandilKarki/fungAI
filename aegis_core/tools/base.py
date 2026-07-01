@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Union
 
 Handler = Callable[..., Union[Any, Awaitable[Any]]]

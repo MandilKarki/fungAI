@@ -8,6 +8,7 @@ from aegis_core.permissions.approval import (
     bypass_all_approval,
     get_or_create_session,
 )
+from aegis_core.permissions.redaction import redact_arguments, redact_value
 
 __all__ = [
     "ApprovalPolicy",
@@ -18,4 +19,6 @@ __all__ = [
     "RiskLevel",
     "bypass_all_approval",
     "get_or_create_session",
+    "redact_arguments",
+    "redact_value",
 ]

@@ -73,15 +73,28 @@ class OpenAIProvider(Provider):
     async def complete(
         self, *, system_prompt: str, messages: list[Message], tools: list[ToolSchema]
     ) -> CompletionResponse:
+        """Retries transient failures (rate limits, connection errors, 5xx)
+        with exponential backoff via tenacity — see AnthropicProvider.complete
+        for why this isn't applied to stream() too."""
         import openai
+        from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-        client = openai.AsyncOpenAI(api_key=self.api_key)
-        response = await client.chat.completions.create(
-            model=self.model,
-            max_completion_tokens=self.max_tokens,
-            messages=_to_openai_messages(system_prompt, messages),
-            tools=_to_openai_tools(tools) if tools else openai.NOT_GIVEN,
-        )
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception_type(
+                (openai.APIConnectionError, openai.RateLimitError, openai.InternalServerError)
+            ),
+            reraise=True,
+        ):
+            with attempt:
+                client = openai.AsyncOpenAI(api_key=self.api_key)
+                response = await client.chat.completions.create(
+                    model=self.model,
+                    max_completion_tokens=self.max_tokens,
+                    messages=_to_openai_messages(system_prompt, messages),
+                    tools=_to_openai_tools(tools) if tools else openai.NOT_GIVEN,
+                )
         choice = response.choices[0]
         tool_calls = [
             ToolCall(id=tc.id, name=tc.function.name, arguments=json.loads(tc.function.arguments or "{}"))

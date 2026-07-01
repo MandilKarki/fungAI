@@ -162,9 +162,12 @@ durable memory. Multiple implementations:
   `asyncio.to_thread` so it's a drop-in async backend alongside the others. Usable directly or
   as a `CompositeBackend` route target for the paths that need durability.
 
-Oversized tool results are automatically evicted to the backend (head/tail preview kept
-inline, full content readable on demand) rather than either truncated and lost, or left
-inline and blowing the budget.
+**Correction (found during a later audit, not implemented despite earlier claims here):**
+automatic oversized-tool-result eviction to the backend (head/tail preview kept inline, full
+content readable on demand, source: deepagents) was designed and documented but never actually
+wired into `ToolRegistry.dispatch()` or the loop — there is no code path that does this today.
+`middleware.py`'s docstring lists "result eviction" only as an example of what a middleware
+*could* implement, not something built. See `ROADMAP.md`.
 
 Separately, `aegis_core/persistence/session_store.py`'s `SQLiteSessionStore` persists the
 *transcript itself* (not files) — pass `session_store=`/`session_id=` to `Agent` and it saves
@@ -309,6 +312,21 @@ prior content to the memory backend before a destructive tool call touches it (c
 tool-name → path-argument-key mapping), and `restore_checkpoint(memory, checkpoint_id)` rolls
 it back — verified with a full write → simulate-mutation → restore round trip.
 
+**Secret redaction** (`aegis_core/permissions/redaction.py`, added 2026-06-30 from a
+documentation re-audit finding hermes-agent does this and we didn't): `redact_arguments()`
+recursively scrubs secret-shaped values (cloud provider keys, tokens, private key blocks,
+generic `keyword: value` credential assignments) from a tool call's arguments before they're
+shown to a human via `ask_callback`, embedded in an LLM auto-approve prompt, or written to
+`aegis_sentinel`'s audit log — the tool itself still executes with the real, unredacted value.
+Verified with 4 tests, including one confirming a secret never reaches a third-party LLM
+provider via the auto-approve path.
+
+*Known, documented limitation*: `ApprovalRule`'s argument-glob matching is plain `fnmatch` over
+raw string values, which is not robust against value normalization tricks (abbreviated flags,
+aliasing) the way a real command parser would be — a real risk *if* a shell-command tool is
+ever added, moot today since no tool anywhere in this project executes shell commands. Flagged
+directly in `approval.py`'s module docstring for whoever adds one.
+
 ## 13. Provider adapters (`aegis_core/providers/`)
 
 A thin `Provider` interface (`complete`, `stream`, `count_tokens`) with adapters per vendor.
@@ -316,8 +334,11 @@ The framework's loop, tools, and middleware never talk to a vendor SDK directly 
 what makes "pick any model" actually true rather than aspirational. `AnthropicProvider` and
 `OpenAIProvider` both implement real completion *and* real incremental streaming against each
 vendor's documented API (structurally correct; needs the deployer's own API key to run live —
-see `ROADMAP.md`). `MockProvider` (scripted or callback-driven) is the no-network provider
-used throughout this project's own examples/tests.
+see `ROADMAP.md`). Both retry transient failures (rate limits, connection errors, 5xx) on
+`complete()` with exponential backoff via `tenacity` — deliberately not on `stream()`, since
+retrying a request that already yielded partial chunks to the caller would duplicate output
+without buffering/replay logic this framework doesn't have. `MockProvider` (scripted or
+callback-driven) is the no-network provider used throughout this project's own examples/tests.
 
 ## 14. Surfaces
 

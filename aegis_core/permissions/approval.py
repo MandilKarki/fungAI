@@ -14,7 +14,22 @@ over directly:
 
 Two roadmap items completed here: a persistent (cross-session) allow-list
 backed by a memory backend, and an LLM-based auto-approve path for
-already-low-risk calls.
+already-low-risk calls. A third, secret redaction before any argument is
+shown to a human or an LLM, is implemented via `redact_arguments()` below.
+
+KNOWN LIMITATION (found in the 2026-06-30 documentation re-audit, see
+ROADMAP.md): `ApprovalRule.pattern`'s argument-glob matching (the
+"tool_name:arg_glob" form in `classify()`) is a plain `fnmatch` glob over
+the raw string value of each argument. hermes-agent shipped a fix for a
+related bypass class: a value classifier that only recognizes a full flag
+name (e.g. `--force`) can be evaded by an abbreviated, aliased, or
+differently-quoted form of the same value. This module has no shell-command
+tool to exploit that risk *today* (see ROADMAP.md §2 — no tool anywhere in
+this project executes shell commands), but if one is ever added, do NOT
+rely on `ApprovalRule` glob patterns over a raw command string as a security
+boundary without first canonicalizing it (e.g. via `shlex` parsing plus
+flag-alias normalization) — glob matching alone is not robust against
+adversarial input shaping.
 """
 
 from __future__ import annotations
@@ -27,6 +42,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Awaitable, Callable
 
+from aegis_core.permissions.redaction import redact_arguments
 from aegis_core.state import Message
 
 if TYPE_CHECKING:
@@ -182,7 +198,12 @@ class ApprovalPolicy:
 
         if ask_callback is None:
             return False
-        return bool(await ask_callback(tool_name, arguments, risk))
+        # Redacted, not raw, arguments: ask_callback is typically a CLI
+        # prompt, chat message, or similar human-facing surface, and a
+        # secret-shaped value (an API key, a password) must never be
+        # displayed in plaintext just because the tool call happened to
+        # carry one — see aegis_core.permissions.redaction.
+        return bool(await ask_callback(tool_name, redact_arguments(arguments), risk))
 
     async def allow_permanently(self, tool_name: str) -> None:
         """Used by a CLI/UI's "always allow" choice: persists if a
@@ -197,10 +218,16 @@ class ApprovalPolicy:
         """Ask a cheap LLM call whether this specific, already-low-risk call
         looks safe — given only its name/arguments, no broader session
         context. Returns None (defer to ask_callback) if the call fails or
-        is ambiguous, never silently approving on an unclear answer."""
+        is ambiguous, never silently approving on an unclear answer.
+
+        Arguments are redacted before being embedded in the prompt: this
+        call goes to a third-party LLM provider, so a secret-shaped
+        argument value must never leave the process in plaintext here any
+        more than it should be shown to a human in ask_callback."""
+        safe_arguments = redact_arguments(arguments)
         prompt = (
             f"A tool call is requesting approval. Tool: {tool_name!r}. "
-            f"Arguments: {arguments!r}. This was pre-classified as LOW risk "
+            f"Arguments: {safe_arguments!r}. This was pre-classified as LOW risk "
             "by static rules. Reply with exactly one word: APPROVE or DENY."
         )
         try:

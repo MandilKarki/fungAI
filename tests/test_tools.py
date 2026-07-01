@@ -1,4 +1,3 @@
-import asyncio
 
 from aegis_core.tools.base import Tool
 from aegis_core.tools.registry import ToolRegistry

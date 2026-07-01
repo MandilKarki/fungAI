@@ -83,16 +83,33 @@ class AnthropicProvider(Provider):
         messages: list[Message],
         tools: list[ToolSchema],
     ) -> CompletionResponse:
+        """Retries transient failures (rate limits, connection errors,
+        5xx) with exponential backoff via tenacity — up to 3 attempts,
+        1-10s wait. Not applied to stream(): retrying a request that has
+        already yielded partial chunks to the caller would either silently
+        duplicate output or require buffering/replay logic this framework
+        doesn't have; a transient mid-stream failure surfaces as an
+        exception instead of being retried."""
         import anthropic
+        from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-        client = anthropic.AsyncAnthropic(api_key=self.api_key)
-        response = await client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=system_prompt,
-            messages=_to_anthropic_messages(messages),
-            tools=_to_anthropic_tools(tools) if tools else anthropic.NOT_GIVEN,
-        )
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception_type(
+                (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.InternalServerError)
+            ),
+            reraise=True,
+        ):
+            with attempt:
+                client = anthropic.AsyncAnthropic(api_key=self.api_key)
+                response = await client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    system=system_prompt,
+                    messages=_to_anthropic_messages(messages),
+                    tools=_to_anthropic_tools(tools) if tools else anthropic.NOT_GIVEN,
+                )
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []

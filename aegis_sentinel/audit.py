@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from aegis_core.memory.backend import BackendProtocol
 from aegis_core.middleware import Middleware
+from aegis_core.permissions.redaction import redact_arguments
 from aegis_core.state import AgentState
 from aegis_core.tools.base import ToolResult
 
@@ -30,12 +31,20 @@ class AuditLogMiddleware(Middleware):
     async def after_tool_call(
         self, *, tool_name: str, arguments: dict, result: ToolResult, state: AgentState
     ):
+        # Redacted before it's ever written to disk: an audit log is
+        # typically long-lived and shared with people beyond whoever ran
+        # the original session, making it the worst place for a
+        # secret-shaped argument or result value to sit in plaintext.
+        result_preview = result.content if result.ok else result.error
+        if isinstance(result_preview, (dict, list, str)):
+            result_preview = redact_arguments({"_": result_preview})["_"]
+
         entry = {
             "ts": time.time(),
             "tool": tool_name,
-            "arguments": arguments,
+            "arguments": redact_arguments(arguments),
             "ok": result.ok,
-            "result_preview": (result.content if result.ok else result.error),
+            "result_preview": result_preview,
             "prev_hash": self._prev_hash,
         }
         entry_hash = hashlib.sha256(

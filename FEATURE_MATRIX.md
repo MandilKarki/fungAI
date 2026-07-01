@@ -45,8 +45,12 @@ direct source per the provenance finding in `ARCHITECTURE.md` §1.
 | Tiered compression | hermes-agent | divergent | core | `context/tiered_compression.py` |
 | Branch-tree session navigation | openclaw | divergent | core | `context/branch_tree.py`, verified (track/navigate/abandon-summary) |
 | Auto-quarantine of misbehaving engine | openclaw | divergent | core | `context/quarantine.py`, verified |
-| Persistent memory (write_memory/MEMORY.md) | hermes-agent, openclaw, deepagents | convergent | core | `self_improvement.py::build_memory_writing_tools` |
-| Full RAG/embedding-based memory search | hermes-agent, openclaw | convergent | **partial** — append/read only, no semantic search yet | roadmap |
+| Persistent memory (write_memory/MEMORY.md) | hermes-agent, openclaw, deepagents | convergent | **partial** — write-only by default, no `read_memory` tool or auto-injection wired in | `self_improvement.py::build_memory_writing_tools` |
+| Full RAG/embedding-based memory search | hermes-agent, openclaw | convergent | roadmap | see ROADMAP.md §1 |
+| Automatic oversized-tool-result eviction | deepagents | divergent | **roadmap — corrected** (previously miswritten as done in ARCHITECTURE.md) | see ROADMAP.md §1 |
+| Sandboxed code/shell execution backends | deepagents, openclaw | divergent | **not built, deliberately** — no shell/code-exec tool exists yet either; openclaw's version is a mature Docker/SSH/OpenShell subsystem, confirming this is a bigger real gap than first scoped (2026-06-30 re-audit, ROADMAP.md §3) | see ROADMAP.md §2, §3 |
+| Todo-list tool/middleware | deepagents (upstream LangChain) | divergent | roadmap | see ROADMAP.md §1 |
+| Self-grading rubric middleware | deepagents | divergent | **not built** | see ROADMAP.md §2 |
 
 ## Prompting
 
@@ -82,6 +86,8 @@ direct source per the provenance finding in `ARCHITECTURE.md` §1.
 | Persistent allow-list | hermes-agent | divergent | core | `permissions/approval.py::PersistentAllowList`, verified |
 | LLM-based low-risk auto-approve | hermes-agent | divergent | core | `permissions/approval.py::_llm_auto_approve`, verified |
 | Checkpoint/snapshot before destructive ops | hermes-agent | divergent | core | `checkpoints.py`, verified restore round trip |
+| Secret redaction before approval/logging | hermes-agent | divergent | core | `permissions/redaction.py`, wired into `ApprovalPolicy.resolve()`, `_llm_auto_approve()`, and `aegis_sentinel/audit.py`; verified with 4 tests (2026-06-30 fix, found in the doc re-audit) |
+| Provider retry/backoff on transient errors | — (new, closes a declared-but-unused `tenacity` dependency) | — | core | `providers/anthropic_provider.py` + `openai_provider.py::complete()`, `AsyncRetrying` w/ exponential backoff; not applied to `stream()` — see docstring |
 
 ## Providers, protocols & surfaces
 
@@ -90,7 +96,7 @@ direct source per the provenance finding in `ARCHITECTURE.md` §1.
 | Vendor-agnostic provider interface | hermes-agent | divergent | core | `providers/base.py` |
 | Anthropic adapter (complete + real streaming) | — | — | **credential-gated** — structurally correct against the documented SDK, needs a real API key to run live | `providers/anthropic_provider.py` |
 | OpenAI adapter (complete + real streaming) | — | — | **credential-gated** | `providers/openai_provider.py` |
-| MCP client integration | hermes-agent, openclaw | convergent | core | `integrations/mcp_client.py`, **live-verified** end to end against a real local MCP server |
+| MCP client integration | hermes-agent, openclaw | convergent | core, **partial vs. hermes-agent's version** — stdio local servers only; hermes-agent additionally handles full OAuth (401 + token refresh) for remote MCP servers, which we don't (found in the 2026-06-30 doc re-audit, see ROADMAP.md §3) | `integrations/mcp_client.py`, **live-verified** end to end against a real local MCP server |
 | ACP cross-vendor delegation | hermes-agent, openclaw | convergent | core | `integrations/acp_client.py`, **live-verified** against a real toy ACP agent |
 | Multi-channel gateway daemon | openclaw | divergent | core | `aegis_gateway/server.py`, **live-verified** over a real local WebSocket |
 | CLI channel | — | — | core | `aegis_gateway/channels/cli_channel.py` |
@@ -117,3 +123,13 @@ direct source per the provenance finding in `ARCHITECTURE.md` §1.
 - Full MITRE ATT&CK STIX corpus (vs. the curated ~40-technique set).
 - Live end-to-end runs of anything requiring a credential this environment doesn't have: Anthropic/OpenAI API keys, Telegram/Discord/Slack bot tokens, AbuseIPDB/VirusTotal API keys, a real third-party ACP agent CLI.
 - Discord channel reconnect/RESUME handling and sharding (only a single-shard, no-resume implementation exists).
+- **Since a 2026-06-30 live re-audit of all three source repos' current docs (ROADMAP.md §3)**:
+  no observability/tracing, no cost tracking, no model failover, no loop detection, no
+  scheduling/cron, no agent evaluation/benchmarking harness, and no durable/resumable approvals.
+  Sandboxing (already listed above) was confirmed as a bigger gap than originally scoped once
+  openclaw's mature version was reviewed. Two security findings from the same audit — unredacted
+  secrets in approval prompts, and a theoretical glob-based approval-classification bypass — are
+  now fixed/documented respectively (see ROADMAP.md §3 and FEATURE_MATRIX.md's permissions rows).
+- **Self-audit findings, same date**: an unused `pydantic` dependency (removed), a declared-but-
+  never-used `tenacity` dependency (now wired into provider retry logic), and lint never having
+  been run (now clean — 2 real unused-import bugs found and fixed).
